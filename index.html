@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 智能记事本</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#6366F1',
+            success: '#10B981',
+            warning: '#F59E0B',
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            inter: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .app-container {
+        @apply bg-white rounded-3xl shadow-2xl h-[720px] relative overflow-hidden flex flex-col;
+      }
+      .app-header {
+        @apply px-5 py-4 flex items-center justify-between flex-shrink-0;
+      }
+      .app-footer {
+        @apply border-t bg-white px-6 py-3 flex-shrink-0;
+      }
+      .app-content {
+        @apply flex-1 overflow-y-auto;
+      }
+      .page {
+        @apply hidden w-full h-full;
+      }
+      .page.active {
+        @apply block;
+      }
+      .nav-item {
+        @apply cursor-pointer transition-colors duration-200;
+      }
+      .nav-item:hover {
+        @apply text-primary/70;
+      }
+      .btn-primary {
+        @apply bg-primary text-white py-3 px-6 rounded-xl font-medium transition-all duration-200 hover:bg-primary/90 active:scale-95;
+      }
+      .btn-secondary {
+        @apply border border-slate-300 py-3 px-6 rounded-xl font-medium transition-all duration-200 hover:bg-slate-50 active:scale-95;
+      }
+      .input-field {
+        @apply w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all;
+      }
+      .note-card {
+        @apply p-4 bg-slate-50 rounded-2xl transition-all duration-200 cursor-pointer hover:shadow-md hover:bg-slate-100;
+      }
+      .category-card {
+        @apply p-5 rounded-2xl flex justify-between items-center transition-all duration-200 cursor-pointer hover:shadow-md;
+      }
+      .toggle-switch {
+        @apply relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200 transition-colors cursor-pointer;
+      }
+      .toggle-switch.active {
+        @apply bg-primary;
+      }
+      .toggle-switch::after {
+        content: '';
+        @apply absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform;
+      }
+      .toggle-switch.active::after {
+        @apply translate-x-5;
+      }
+    }
+  </style>
+<base target="_blank">
+</head>
+
+<body class="bg-slate-100 font-inter text-dark min-h-screen">
+  <!-- 登录验证遮罩 -->
+  <div id="authOverlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center">
+    <div class="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <i class="fa fa-lock text-primary text-2xl"></i>
+        </div>
+        <h3 class="text-xl font-bold">需要登录</h3>
+        <p class="text-sm text-slate-500 mt-1">请先登录以访问此页面</p>
+      </div>
+      <button onclick="showPage('login')" class="btn-primary w-full">前往登录</button>
+    </div>
+  </div>
+
+  <!-- 全局提示 -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-dark text-white px-6 py-3 rounded-xl shadow-lg z-50 transition-all duration-300 opacity-0 pointer-events-none transform -translate-y-4">
+    <span id="toastText"></span>
+  </div>
+
+  <div class="max-w-7xl mx-auto p-4 md:p-8">
+    <h1 class="text-2xl md:text-3xl font-bold text-center mb-8">AI 智能记事本 APP</h1>
+
+    <!-- 页面导航（仅开发/演示模式显示） -->
+    <div class="flex flex-wrap gap-2 justify-center mb-6" id="pageNav">
+      <button onclick="showPage('login')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">登录页</button>
+      <button onclick="showPage('home')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">首页</button>
+      <button onclick="showPage('edit')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">编辑页</button>
+      <button onclick="showPage('category')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">分类页</button>
+      <button onclick="showPage('favorite')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">收藏页</button>
+      <button onclick="showPage('trash')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">回收站</button>
+      <button onclick="showPage('settings')" class="px-4 py-2 bg-white rounded-full text-sm shadow hover:shadow-md transition-all">设置页</button>
+    </div>
+
+    <!-- 当前登录状态显示 -->
+    <div class="text-center mb-6">
+      <span id="userStatus" class="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full text-sm shadow">
+        <i class="fa fa-user-circle text-slate-400"></i>
+        <span id="statusText">未登录</span>
+        <button id="logoutBtn" onclick="logout()" class="hidden text-red-500 hover:text-red-600 ml-2">
+          <i class="fa fa-sign-out"></i> 退出
+        </button>
+      </span>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <!-- ========== 1. 欢迎登录页 ========== -->
+      <div id="page-login" class="page active">
+        <div class="app-container">
+          <div class="h-full flex flex-col items-center justify-center px-8 bg-gradient-to-b from-primary/10 to-white">
+            <div class="w-20 h-20 rounded-full bg-primary flex items-center justify-center mb-6 animate-bounce">
+              <i class="fa fa-sticky-note text-white text-4xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold mb-2">AI 智能记事本</h2>
+            <p class="text-slate-500 mb-8 text-center">记录 · 思考 · AI 辅助</p>
+
+            <!-- 登录表单 -->
+            <div id="loginForm" class="w-full space-y-4">
+              <div>
+                <input type="text" id="loginUsername" placeholder="用户名 / 邮箱" class="input-field" value="demo">
+              </div>
+              <div class="relative">
+                <input type="password" id="loginPassword" placeholder="密码" class="input-field" value="123456">
+                <button onclick="togglePassword('loginPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i class="fa fa-eye"></i>
+                </button>
+              </div>
+              <button onclick="login()" class="btn-primary w-full">登录</button>
+              <div class="flex justify-between text-sm text-slate-500">
+                <button onclick="showRegister()" class="hover:text-primary">注册账号</button>
+                <button onclick="showForgot()" class="hover:text-primary">忘记密码？</button>
+              </div>
+            </div>
+
+            <!-- 注册表单 -->
+            <div id="registerForm" class="w-full space-y-4 hidden">
+              <div>
+                <input type="text" id="regUsername" placeholder="设置用户名" class="input-field">
+              </div>
+              <div class="relative">
+                <input type="password" id="regPassword" placeholder="设置密码（至少6位）" class="input-field">
+                <button onclick="togglePassword('regPassword')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <i class="fa fa-eye"></i>
+                </button>
+              </div>
+              <div class="relative">
+                <input type="password" id="regConfirm" placeholder="确认密码" class="input-field">
+              </div>
+              <button onclick="register()" class="btn-primary w-full">注册</button>
+              <button onclick="showLogin()" class="btn-secondary w-full">返回登录</button>
+            </div>
+
+            <!-- 忘记密码 -->
+            <div id="forgotForm" class="w-full space-y-4 hidden">
+              <div>
+                <input type="text" id="forgotUsername" placeholder="输入用户名" class="input-field">
+              </div>
+              <div>
+                <input type="text" id="forgotNewPass" placeholder="设置新密码" class="input-field">
+              </div>
+              <button onclick="resetPassword()" class="btn-primary w-full">重置密码</button>
+              <button onclick="showLogin()" class="btn-secondary w-full">返回登录</button>
+            </div>
+
+            <div class="mt-6 w-full">
+              <div class="relative flex items-center justify-center mb-4">
+                <div class="border-t border-slate-200 w-full"></div>
+                <span class="bg-white px-3 text-xs text-slate-400 absolute">或</span>
+              </div>
+              <button onclick="guestLogin()" class="btn-secondary w-full">
+                <i class="fa fa-user-o mr-2"></i>游客体验
+              </button>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-8">版本 2.0.0 · 安全加密存储</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 2. 首页（笔记列表） ========== -->
+      <div id="page-home" class="page">
+        <div class="app-container">
+          <div class="app-header">
+            <h2 class="font-bold text-xl">我的笔记</h2>
+            <div class="flex gap-3">
+              <button onclick="showSearch()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+                <i class="fa fa-search text-lg"></i>
+              </button>
+              <button onclick="newNote()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+                <i class="fa fa-plus-circle text-lg text-primary"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- 搜索栏 -->
+          <div id="searchBar" class="px-5 mb-2 hidden">
+            <div class="relative">
+              <input type="text" id="searchInput" placeholder="搜索笔记..." class="input-field pl-10" oninput="searchNotes()">
+              <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <button onclick="hideSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <i class="fa fa-times"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="app-content">
+            <div class="px-5 mb-4">
+              <div class="flex gap-2 overflow-x-auto pb-2" id="categoryFilter">
+                <button onclick="filterNotes('all')" class="px-4 py-2 bg-primary text-white rounded-full text-sm whitespace-nowrap transition-all">全部</button>
+                <button onclick="filterNotes('work')" class="px-4 py-2 bg-slate-100 rounded-full text-sm whitespace-nowrap transition-all hover:bg-slate-200">工作</button>
+                <button onclick="filterNotes('life')" class="px-4 py-2 bg-slate-100 rounded-full text-sm whitespace-nowrap transition-all hover:bg-slate-200">生活</button>
+                <button onclick="filterNotes('study')" class="px-4 py-2 bg-slate-100 rounded-full text-sm whitespace-nowrap transition-all hover:bg-slate-200">学习</button>
+                <button onclick="filterNotes('ai')" class="px-4 py-2 bg-slate-100 rounded-full text-sm whitespace-nowrap transition-all hover:bg-slate-200">AI生成</button>
+              </div>
+            </div>
+
+            <div class="px-5 space-y-4" id="notesList">
+              <!-- 动态生成 -->
+            </div>
+          </div>
+
+          <div class="app-footer">
+            <div class="grid grid-cols-4 gap-1 text-center">
+              <div class="nav-item text-primary" onclick="showPage('home')">
+                <i class="fa fa-home text-lg"></i><p class="text-xs mt-1">首页</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('category')">
+                <i class="fa fa-folder text-lg"></i><p class="text-xs mt-1">分类</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('favorite')">
+                <i class="fa fa-star text-lg"></i><p class="text-xs mt-1">收藏</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('settings')">
+                <i class="fa fa-user text-lg"></i><p class="text-xs mt-1">我的</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 3. AI 笔记编辑页 ========== -->
+      <div id="page-edit" class="page">
+        <div class="app-container">
+          <div class="app-header bg-primary text-white">
+            <button onclick="goBack()" class="w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+              <i class="fa fa-arrow-left"></i>
+            </button>
+            <h2 class="font-medium" id="editTitle">编辑笔记</h2>
+            <div class="flex gap-2">
+              <button onclick="showAIAssist()" class="w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                <i class="fa fa-magic"></i>
+              </button>
+              <button onclick="saveNote()" class="w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                <i class="fa fa-check"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="app-content p-5 space-y-4">
+            <input id="noteTitle" placeholder="输入标题" class="w-full text-xl font-bold border-b border-slate-200 pb-2 outline-none bg-transparent">
+            <textarea id="noteContent" placeholder="开始记录..." rows="6" class="w-full border-none outline-none text-base resize-none bg-transparent"></textarea>
+
+            <!-- AI 助手面板 -->
+            <div id="aiPanel" class="bg-primary/5 p-4 rounded-2xl border border-primary/20 hidden">
+              <div class="flex gap-3 mb-3">
+                <i class="fa fa-robot text-primary text-xl"></i>
+                <h4 class="font-medium text-primary">AI 助手</h4>
+                <button onclick="hideAIAssist()" class="ml-auto text-slate-400 hover:text-slate-600">
+                  <i class="fa fa-times"></i>
+                </button>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="aiContinue()" class="text-left p-3 bg-white rounded-lg text-sm hover:shadow-md transition-all">
+                  <span class="text-lg mr-1">✨</span>续写内容
+                </button>
+                <button onclick="aiPolish()" class="text-left p-3 bg-white rounded-lg text-sm hover:shadow-md transition-all">
+                  <span class="text-lg mr-1">📝</span>内容润色
+                </button>
+                <button onclick="aiSummary()" class="text-left p-3 bg-white rounded-lg text-sm hover:shadow-md transition-all">
+                  <span class="text-lg mr-1">📊</span>总结要点
+                </button>
+                <button onclick="aiTag()" class="text-left p-3 bg-white rounded-lg text-sm hover:shadow-md transition-all">
+                  <span class="text-lg mr-1">🏷️</span>智能标签
+                </button>
+              </div>
+              <div id="aiResult" class="mt-3 p-3 bg-white rounded-lg text-sm hidden">
+                <p class="text-slate-600" id="aiResultText"></p>
+                <div class="flex gap-2 mt-2">
+                  <button onclick="applyAIResult()" class="text-xs bg-primary text-white px-3 py-1 rounded">应用</button>
+                  <button onclick="hideAIResult()" class="text-xs bg-slate-100 px-3 py-1 rounded">取消</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="border border-slate-200 rounded-xl p-4">
+              <p class="text-sm font-medium mb-2">选择分类</p>
+              <div class="flex gap-2 flex-wrap" id="editCategories">
+                <button onclick="setCategory('work')" class="cat-btn px-3 py-1 bg-slate-100 rounded-full text-sm transition-all" data-cat="work">工作</button>
+                <button onclick="setCategory('life')" class="cat-btn px-3 py-1 bg-slate-100 rounded-full text-sm transition-all" data-cat="life">生活</button>
+                <button onclick="setCategory('study')" class="cat-btn px-3 py-1 bg-slate-100 rounded-full text-sm transition-all" data-cat="study">学习</button>
+                <button onclick="setCategory('travel')" class="cat-btn px-3 py-1 bg-slate-100 rounded-full text-sm transition-all" data-cat="travel">旅行</button>
+                <button onclick="setCategory('ai')" class="cat-btn px-3 py-1 bg-slate-100 rounded-full text-sm transition-all" data-cat="ai">AI生成</button>
+              </div>
+            </div>
+
+            <div class="border border-slate-200 rounded-xl p-4">
+              <p class="text-sm font-medium mb-2">标签</p>
+              <div class="flex gap-2 flex-wrap" id="tagsList">
+                <input type="text" id="tagInput" placeholder="添加标签，按回车" class="input-field text-sm" onkeypress="addTag(event)">
+              </div>
+            </div>
+          </div>
+
+          <div class="absolute bottom-5 left-5 right-5 flex justify-between">
+            <button class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors">
+              <i class="fa fa-image"></i>
+            </button>
+            <button onclick="saveNote()" class="px-6 h-12 rounded-full bg-primary text-white flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors">
+              <i class="fa fa-paper-plane"></i>
+              <span>保存</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 4. 分类管理页 ========== -->
+      <div id="page-category" class="page">
+        <div class="app-container">
+          <div class="app-header">
+            <button onclick="goBack()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+              <i class="fa fa-arrow-left"></i>
+            </button>
+            <h2 class="font-bold">笔记分类</h2>
+            <button onclick="showAddCategory()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors text-primary">
+              <i class="fa fa-plus"></i>
+            </button>
+          </div>
+
+          <div class="app-content p-5 space-y-4">
+            <div id="categoryList">
+              <!-- 动态生成 -->
+            </div>
+          </div>
+
+          <div class="app-footer">
+            <div class="grid grid-cols-4 gap-1 text-center">
+              <div class="nav-item text-slate-400" onclick="showPage('home')">
+                <i class="fa fa-home text-lg"></i><p class="text-xs mt-1">首页</p>
+              </div>
+              <div class="nav-item text-primary" onclick="showPage('category')">
+                <i class="fa fa-folder text-lg"></i><p class="text-xs mt-1">分类</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('favorite')">
+                <i class="fa fa-star text-lg"></i><p class="text-xs mt-1">收藏</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('settings')">
+                <i class="fa fa-user text-lg"></i><p class="text-xs mt-1">我的</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 5. 收藏笔记页 ========== -->
+      <div id="page-favorite" class="page">
+        <div class="app-container">
+          <div class="app-header">
+            <button onclick="goBack()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+              <i class="fa fa-arrow-left"></i>
+            </button>
+            <h2 class="font-bold">我的收藏</h2>
+            <div class="w-10"></div>
+          </div>
+
+          <div class="app-content p-5 space-y-4" id="favoriteList">
+            <!-- 动态生成 -->
+          </div>
+
+          <div class="app-footer">
+            <div class="grid grid-cols-4 gap-1 text-center">
+              <div class="nav-item text-slate-400" onclick="showPage('home')">
+                <i class="fa fa-home text-lg"></i><p class="text-xs mt-1">首页</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('category')">
+                <i class="fa fa-folder text-lg"></i><p class="text-xs mt-1">分类</p>
+              </div>
+              <div class="nav-item text-primary" onclick="showPage('favorite')">
+                <i class="fa fa-star text-lg"></i><p class="text-xs mt-1">收藏</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('settings')">
+                <i class="fa fa-user text-lg"></i><p class="text-xs mt-1">我的</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 6. 回收站页 ========== -->
+      <div id="page-trash" class="page">
+        <div class="app-container">
+          <div class="app-header">
+            <h2 class="font-bold">回收站</h2>
+            <button onclick="clearTrash()" class="text-primary text-sm hover:text-primary/80 transition-colors">清空</button>
+          </div>
+
+          <div class="app-content p-5 space-y-4" id="trashList">
+            <!-- 动态生成 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 7. 设置页 ========== -->
+      <div id="page-settings" class="page">
+        <div class="app-container">
+          <div class="app-header">
+            <button onclick="goBack()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+              <i class="fa fa-arrow-left"></i>
+            </button>
+            <h2 class="font-bold">设置</h2>
+            <div class="w-10"></div>
+          </div>
+
+          <div class="app-content p-5 space-y-6">
+            <div class="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors" onclick="editProfile()">
+              <img src="https://picsum.photos/id/1012/100/100" class="w-14 h-14 rounded-full" id="userAvatar">
+              <div class="flex-1">
+                <p class="font-medium" id="settingsUsername">AI 用户</p>
+                <p class="text-xs text-slate-400">点击修改个人资料</p>
+              </div>
+              <i class="fa fa-chevron-right text-slate-300"></i>
+            </div>
+
+            <div class="space-y-3">
+              <div class="flex justify-between items-center p-4 bg-slate-50 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <i class="fa fa-moon-o text-primary"></i>
+                  <span>深色模式</span>
+                </div>
+                <div class="toggle-switch" id="darkModeToggle" onclick="toggleSetting('darkMode')">
+                  <span class="sr-only">深色模式</span>
+                </div>
+              </div>
+
+              <div class="flex justify-between items-center p-4 bg-slate-50 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <i class="fa fa-save text-primary"></i>
+                  <span>自动保存</span>
+                </div>
+                <div class="toggle-switch active" id="autoSaveToggle" onclick="toggleSetting('autoSave')">
+                  <span class="sr-only">自动保存</span>
+                </div>
+              </div>
+
+              <div class="flex justify-between items-center p-4 bg-slate-50 rounded-xl">
+                <div class="flex items-center gap-3">
+                  <i class="fa fa-bell text-primary"></i>
+                  <span>消息通知</span>
+                </div>
+                <div class="toggle-switch active" id="notifyToggle" onclick="toggleSetting('notify')">
+                  <span class="sr-only">消息通知</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <button onclick="showPage('trash')" class="w-full p-4 bg-slate-50 rounded-xl text-left flex items-center gap-3 hover:bg-slate-100 transition-colors">
+                <i class="fa fa-trash text-primary"></i>
+                <span>回收站</span>
+                <span class="ml-auto text-xs text-slate-400" id="trashCount">0 篇</span>
+              </button>
+              <button class="w-full p-4 bg-slate-50 rounded-xl text-left flex items-center gap-3 hover:bg-slate-100 transition-colors">
+                <i class="fa fa-database text-primary"></i>
+                <span>备份与恢复</span>
+              </button>
+              <button class="w-full p-4 bg-slate-50 rounded-xl text-left flex items-center gap-3 hover:bg-slate-100 transition-colors">
+                <i class="fa fa-shield text-primary"></i>
+                <span>隐私政策</span>
+              </button>
+              <button class="w-full p-4 bg-slate-50 rounded-xl text-left flex items-center gap-3 hover:bg-slate-100 transition-colors">
+                <i class="fa fa-info-circle text-primary"></i>
+                <span>关于应用</span>
+                <span class="ml-auto text-xs text-slate-400">v2.0.0</span>
+              </button>
+            </div>
+
+            <button onclick="logout()" class="w-full py-4 bg-red-50 text-red-500 rounded-xl font-medium hover:bg-red-100 transition-colors">
+              <i class="fa fa-sign-out mr-2"></i>退出登录
+            </button>
+          </div>
+
+          <div class="app-footer">
+            <div class="grid grid-cols-4 gap-1 text-center">
+              <div class="nav-item text-slate-400" onclick="showPage('home')">
+                <i class="fa fa-home text-lg"></i><p class="text-xs mt-1">首页</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('category')">
+                <i class="fa fa-folder text-lg"></i><p class="text-xs mt-1">分类</p>
+              </div>
+              <div class="nav-item text-slate-400" onclick="showPage('favorite')">
+                <i class="fa fa-star text-lg"></i><p class="text-xs mt-1">收藏</p>
+              </div>
+              <div class="nav-item text-primary" onclick="showPage('settings')">
+                <i class="fa fa-user text-lg"></i><p class="text-xs mt-1">我的</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ========== 数据存储 ==========
+    const Storage = {
+      get(key) {
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+      },
+      set(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+      },
+      remove(key) {
+        localStorage.removeItem(key);
+      }
+    };
+
+    // 初始化默认数据
+    function initData() {
+      if (!Storage.get('users')) {
+        Storage.set('users', {
+          'demo': { password: '123456', avatar: 'https://picsum.photos/id/1012/100/100' }
+        });
+      }
+      if (!Storage.get('notes')) {
+        Storage.set('notes', [
+          { id: 1, title: '工作周报整理', content: '本周完成项目需求分析、UI设计、开发排期规划，下周开始编码实现核心功能模块。', category: 'work', tags: ['工作', '周报'], favorite: false, deleted: false, date: '今天 14:30' },
+          { id: 2, title: 'AI 生成旅行计划', content: '五一假期 5天4晚旅行攻略，包含交通、住宿、景点、美食推荐，预算控制在5000元以内。', category: 'ai', tags: ['AI生成', '旅行'], favorite: true, deleted: false, date: '昨天 10:15' },
+          { id: 3, title: '学习笔记：JavaScript', content: '闭包、原型链、异步编程、Promise、async await、事件循环机制详解。', category: 'study', tags: ['学习', '前端'], favorite: false, deleted: false, date: '4月2日' },
+          { id: 4, title: '重要会议纪要', content: '会议确定产品方向、迭代计划、资源分配，需重点执行Q2季度目标。', category: 'work', tags: ['会议', '重要'], favorite: true, deleted: false, date: '3月28日' },
+          { id: 5, title: 'AI 写作高级技巧', content: '指令优化、上下文管理、输出格式控制、多轮对话技巧、角色设定方法。', category: 'ai', tags: ['AI', '写作'], favorite: true, deleted: false, date: '4月1日' }
+        ]);
+      }
+      if (!Storage.get('categories')) {
+        Storage.set('categories', [
+          { id: 'work', name: '工作', icon: 'briefcase', color: 'blue', count: 12 },
+          { id: 'study', name: '学习', icon: 'book', color: 'green', count: 8 },
+          { id: 'life', name: '生活', icon: 'coffee', color: 'orange', count: 15 },
+          { id: 'ai', name: 'AI 生成', icon: 'robot', color: 'purple', count: 6 },
+          { id: 'travel', name: '旅行', icon: 'plane', color: 'cyan', count: 3 }
+        ]);
+      }
+      if (!Storage.get('settings')) {
+        Storage.set('settings', { darkMode: false, autoSave: true, notify: true });
+      }
+      if (!Storage.get('trash')) {
+        Storage.set('trash', [
+          { id: 101, title: '已删除笔记 1', content: '临时记录内容...', category: 'life', date: '3天后彻底删除', daysLeft: 3 },
+          { id: 102, title: '已删除笔记 2', content: '草稿内容...', category: 'work', date: '5天后彻底删除', daysLeft: 5 }
+        ]);
+      }
+    }
+
+    // ========== 状态管理 ==========
+    let currentUser = null;
+    let currentNoteId = null;
+    let currentCategory = 'all';
+    let previousPage = 'home';
+    let aiResultText = '';
+
+    // ========== 页面路由 ==========
+    function showPage(pageId) {
+      // 检查登录状态（除登录页外）
+      if (pageId !== 'login' && !currentUser) {
+        document.getElementById('authOverlay').classList.remove('hidden');
+        document.getElementById('authOverlay').classList.add('flex');
+        return;
+      }
+
+      // 隐藏所有页面
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+      // 显示目标页面
+      const target = document.getElementById('page-' + pageId);
+      if (target) {
+        target.classList.add('active');
+        previousPage = pageId;
+      }
+
+      // 更新底部导航高亮
+      updateNavHighlight(pageId);
+
+      // 页面特定初始化
+      if (pageId === 'home') renderNotes();
+      if (pageId === 'category') renderCategories();
+      if (pageId === 'favorite') renderFavorites();
+      if (pageId === 'trash') renderTrash();
+      if (pageId === 'settings') updateSettingsUI();
+
+      // 滚动到顶部
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function updateNavHighlight(pageId) {
+      const navMap = { 'home': 0, 'category': 1, 'favorite': 2, 'settings': 3 };
+      document.querySelectorAll('.app-footer .nav-item').forEach((item, idx) => {
+        const isActive = navMap[pageId] === idx;
+        item.classList.toggle('text-primary', isActive);
+        item.classList.toggle('text-slate-400', !isActive);
+      });
+    }
+
+    function goBack() {
+      showPage('home');
+    }
+
+    // ========== 认证系统 ==========
+    function login() {
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!username || !password) {
+        showToast('请输入用户名和密码');
+        return;
+      }
+
+      const users = Storage.get('users') || {};
+      if (users[username] && users[username].password === password) {
+        currentUser = username;
+        updateUserStatus();
+        showToast('登录成功！');
+        showPage('home');
+      } else {
+        showToast('用户名或密码错误');
+      }
+    }
+
+    function register() {
+      const username = document.getElementById('regUsername').value.trim();
+      const password = document.getElementById('regPassword').value;
+      const confirm = document.getElementById('regConfirm').value;
+
+      if (!username || !password) {
+        showToast('请填写完整信息');
+        return;
+      }
+      if (password.length < 6) {
+        showToast('密码至少6位');
+        return;
+      }
+      if (password !== confirm) {
+        showToast('两次密码不一致');
+        return;
+      }
+
+      const users = Storage.get('users') || {};
+      if (users[username]) {
+        showToast('用户名已存在');
+        return;
+      }
+
+      users[username] = { password: password, avatar: 'https://picsum.photos/id/1012/100/100' };
+      Storage.set('users', users);
+      showToast('注册成功！请登录');
+      showLogin();
+    }
+
+    function resetPassword() {
+      const username = document.getElementById('forgotUsername').value.trim();
+      const newPass = document.getElementById('forgotNewPass').value;
+
+      if (!username || !newPass) {
+        showToast('请填写完整信息');
+        return;
+      }
+
+      const users = Storage.get('users') || {};
+      if (!users[username]) {
+        showToast('用户不存在');
+        return;
+      }
+
+      users[username].password = newPass;
+      Storage.set('users', users);
+      showToast('密码重置成功！');
+      showLogin();
+    }
+
+    function guestLogin() {
+      currentUser = 'guest';
+      updateUserStatus();
+      showToast('游客模式已开启');
+      showPage('home');
+    }
+
+    function logout() {
+      currentUser = null;
+      updateUserStatus();
+      showToast('已退出登录');
+      showPage('login');
+    }
+
+    function updateUserStatus() {
+      const statusText = document.getElementById('statusText');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const settingsUsername = document.getElementById('settingsUsername');
+
+      if (currentUser) {
+        statusText.textContent = currentUser === 'guest' ? '游客用户' : currentUser;
+        logoutBtn.classList.remove('hidden');
+        if (settingsUsername) settingsUsername.textContent = currentUser === 'guest' ? '游客用户' : currentUser;
+      } else {
+        statusText.textContent = '未登录';
+        logoutBtn.classList.add('hidden');
+      }
+    }
+
+    // 表单切换
+    function showRegister() {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('registerForm').classList.remove('hidden');
+      document.getElementById('forgotForm').classList.add('hidden');
+    }
+
+    function showLogin() {
+      document.getElementById('loginForm').classList.remove('hidden');
+      document.getElementById('registerForm').classList.add('hidden');
+      document.getElementById('forgotForm').classList.add('hidden');
+    }
+
+    function showForgot() {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('registerForm').classList.add('hidden');
+      document.getElementById('forgotForm').classList.remove('hidden');
+    }
+
+    function togglePassword(id) {
+      const input = document.getElementById(id);
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    // ========== 笔记功能 ==========
+    function renderNotes(filter = 'all') {
+      const notes = Storage.get('notes') || [];
+      const list = document.getElementById('notesList');
+      const filtered = filter === 'all' ? notes : notes.filter(n => n.category === filter);
+
+      list.innerHTML = filtered.map(note => `
+        <div class="note-card" onclick="editNote(${note.id})">
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">${note.title}</span>
+            <span class="text-xs text-slate-400">${note.date}</span>
+          </div>
+          <p class="text-sm text-slate-500 line-clamp-2">${note.content}</p>
+          <div class="mt-2 flex gap-2 items-center">
+            <span class="text-xs bg-${getCategoryColor(note.category)}-100 text-${getCategoryColor(note.category)}-600 px-2 py-1 rounded">${getCategoryName(note.category)}</span>
+            ${note.favorite ? '<i class="fa fa-star text-warning text-xs"></i>' : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterNotes(cat) {
+      currentCategory = cat;
+      // 更新按钮样式
+      document.querySelectorAll('#categoryFilter button').forEach(btn => {
+        const isActive = btn.textContent === (cat === 'all' ? '全部' : getCategoryName(cat));
+        btn.classList.toggle('bg-primary', isActive);
+        btn.classList.toggle('text-white', isActive);
+        btn.classList.toggle('bg-slate-100', !isActive);
+      });
+      renderNotes(cat);
+    }
+
+    function searchNotes() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const notes = Storage.get('notes') || [];
+      const list = document.getElementById('notesList');
+
+      const filtered = notes.filter(n => 
+        n.title.toLowerCase().includes(query) || 
+        n.content.toLowerCase().includes(query)
+      );
+
+      list.innerHTML = filtered.map(note => `
+        <div class="note-card" onclick="editNote(${note.id})">
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">${note.title}</span>
+            <span class="text-xs text-slate-400">${note.date}</span>
+          </div>
+          <p class="text-sm text-slate-500 line-clamp-2">${note.content}</p>
+          <div class="mt-2 flex gap-2">
+            <span class="text-xs bg-${getCategoryColor(note.category)}-100 text-${getCategoryColor(note.category)}-600 px-2 py-1 rounded">${getCategoryName(note.category)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function showSearch() {
+      document.getElementById('searchBar').classList.remove('hidden');
+      document.getElementById('searchInput').focus();
+    }
+
+    function hideSearch() {
+      document.getElementById('searchBar').classList.add('hidden');
+      document.getElementById('searchInput').value = '';
+      renderNotes(currentCategory);
+    }
+
+    function newNote() {
+      currentNoteId = null;
+      document.getElementById('noteTitle').value = '';
+      document.getElementById('noteContent').value = '';
+      document.getElementById('editTitle').textContent = '新建笔记';
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.classList.remove('bg-primary', 'text-white');
+        btn.classList.add('bg-slate-100');
+      });
+      document.getElementById('tagsList').innerHTML = '<input type="text" id="tagInput" placeholder="添加标签，按回车" class="input-field text-sm" onkeypress="addTag(event)">';
+      showPage('edit');
+    }
+
+    function editNote(id) {
+      const notes = Storage.get('notes') || [];
+      const note = notes.find(n => n.id === id);
+      if (!note) return;
+
+      currentNoteId = id;
+      document.getElementById('noteTitle').value = note.title;
+      document.getElementById('noteContent').value = note.content;
+      document.getElementById('editTitle').textContent = '编辑笔记';
+
+      // 设置分类
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        const isActive = btn.dataset.cat === note.category;
+        btn.classList.toggle('bg-primary', isActive);
+        btn.classList.toggle('text-white', isActive);
+        btn.classList.toggle('bg-slate-100', !isActive);
+      });
+
+      // 设置标签
+      const tagsHtml = note.tags.map(tag => `
+        <span class="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm flex items-center gap-1">
+          ${tag} <button onclick="this.parentElement.remove()" class="hover:text-red-500"><i class="fa fa-times"></i></button>
+        </span>
+      `).join('');
+      document.getElementById('tagsList').innerHTML = tagsHtml + '<input type="text" id="tagInput" placeholder="添加标签，按回车" class="input-field text-sm" onkeypress="addTag(event)">';
+
+      showPage('edit');
+    }
+
+    function saveNote() {
+      const title = document.getElementById('noteTitle').value.trim();
+      const content = document.getElementById('noteContent').value.trim();
+
+      if (!title) {
+        showToast('请输入标题');
+        return;
+      }
+
+      const notes = Storage.get('notes') || [];
+      const tags = Array.from(document.querySelectorAll('#tagsList span')).map(s => s.textContent.replace(' ×', '').trim());
+      const activeCat = document.querySelector('.cat-btn.bg-primary');
+      const category = activeCat ? activeCat.dataset.cat : 'life';
+
+      if (currentNoteId) {
+        const idx = notes.findIndex(n => n.id === currentNoteId);
+        if (idx !== -1) {
+          notes[idx] = { ...notes[idx], title, content, category, tags };
+        }
+      } else {
+        const newId = Math.max(...notes.map(n => n.id), 0) + 1;
+        notes.unshift({
+          id: newId,
+          title,
+          content,
+          category,
+          tags,
+          favorite: false,
+          deleted: false,
+          date: '刚刚'
+        });
+      }
+
+      Storage.set('notes', notes);
+      showToast('保存成功！');
+      showPage('home');
+    }
+
+    function setCategory(cat) {
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        const isActive = btn.dataset.cat === cat;
+        btn.classList.toggle('bg-primary', isActive);
+        btn.classList.toggle('text-white', isActive);
+        btn.classList.toggle('bg-slate-100', !isActive);
+      });
+    }
+
+    function addTag(e) {
+      if (e.key === 'Enter') {
+        const input = e.target;
+        const tag = input.value.trim();
+        if (tag) {
+          const span = document.createElement('span');
+          span.className = 'px-3 py-1 bg-primary/10 text-primary rounded-full text-sm flex items-center gap-1';
+          span.innerHTML = `${tag} <button onclick="this.parentElement.remove()" class="hover:text-red-500"><i class="fa fa-times"></i></button>`;
+          input.parentElement.insertBefore(span, input);
+          input.value = '';
+        }
+      }
+    }
+
+    // ========== AI 功能 ==========
+    function showAIAssist() {
+      document.getElementById('aiPanel').classList.remove('hidden');
+    }
+
+    function hideAIAssist() {
+      document.getElementById('aiPanel').classList.add('hidden');
+      hideAIResult();
+    }
+
+    function aiContinue() {
+      const content = document.getElementById('noteContent').value;
+      aiResultText = content + '\n\n[AI续写] 基于此内容，建议进一步补充实施细节、时间节点和责任人分配，确保计划可执行。';
+      showAIResult('已为您生成续写建议，点击应用可追加到笔记末尾。');
+    }
+
+    function aiPolish() {
+      aiResultText = document.getElementById('noteContent').value
+        .replace(/很/g, '非常')
+        .replace(/好/g, '优秀') + '\n\n[AI润色] 内容已优化，语言更加专业流畅。';
+      showAIResult('内容润色完成，语言更加专业流畅。');
+    }
+
+    function aiSummary() {
+      const content = document.getElementById('noteContent').value;
+      aiResultText = '【要点总结】\n1. 核心主题提取\n2. 关键行动项梳理\n3. 时间节点规划\n4. 资源需求分析';
+      showAIResult('已生成内容要点总结。');
+    }
+
+    function aiTag() {
+      const title = document.getElementById('noteTitle').value;
+      const content = document.getElementById('noteContent').value;
+      const suggestedTags = ['重要', '待办', title ? title.slice(0, 4) : '笔记'];
+      aiResultText = suggestedTags.join(', ');
+      showAIResult('建议标签：' + suggestedTags.join('、'));
+    }
+
+    function showAIResult(text) {
+      document.getElementById('aiResultText').textContent = text;
+      document.getElementById('aiResult').classList.remove('hidden');
+    }
+
+    function hideAIResult() {
+      document.getElementById('aiResult').classList.add('hidden');
+    }
+
+    function applyAIResult() {
+      const content = document.getElementById('noteContent');
+      content.value = aiResultText;
+      hideAIResult();
+      showToast('已应用 AI 建议');
+    }
+
+    // ========== 分类页 ==========
+    function renderCategories() {
+      const categories = Storage.get('categories') || [];
+      const notes = Storage.get('notes') || [];
+      const list = document.getElementById('categoryList');
+
+      list.innerHTML = categories.map(cat => {
+        const count = notes.filter(n => n.category === cat.id).length;
+        return `
+          <div class="category-card bg-${cat.color}-50 hover:bg-${cat.color}-100" onclick="filterNotes('${cat.id}'); showPage('home')">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-${cat.color}-100 flex items-center justify-center text-${cat.color}-600">
+                <i class="fa fa-${cat.icon}"></i>
+              </div>
+              <div>
+                <p class="font-medium">${cat.name}</p>
+                <p class="text-xs text-slate-500">${count} 篇笔记</p>
+              </div>
+            </div>
+            <i class="fa fa-chevron-right text-slate-300"></i>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showAddCategory() {
+      const name = prompt('请输入分类名称：');
+      if (name) {
+        const cats = Storage.get('categories') || [];
+        const colors = ['blue', 'green', 'orange', 'purple', 'cyan', 'red', 'pink'];
+        const icons = ['tag', 'bookmark', 'flag', 'heart'];
+        cats.push({
+          id: 'cat_' + Date.now(),
+          name,
+          icon: icons[Math.floor(Math.random() * icons.length)],
+          color: colors[Math.floor(Math.random() * colors.length)],
+          count: 0
+        });
+        Storage.set('categories', cats);
+        renderCategories();
+        showToast('分类添加成功');
+      }
+    }
+
+    // ========== 收藏页 ==========
+    function renderFavorites() {
+      const notes = Storage.get('notes') || [];
+      const favorites = notes.filter(n => n.favorite);
+      const list = document.getElementById('favoriteList');
+
+      if (favorites.length === 0) {
+        list.innerHTML = `
+          <div class="text-center py-10 text-slate-400">
+            <i class="fa fa-star-o text-4xl mb-3"></i>
+            <p>暂无收藏笔记</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = favorites.map(note => `
+        <div class="p-4 bg-yellow-50 rounded-2xl border border-yellow-200 cursor-pointer hover:shadow-md transition-all" onclick="editNote(${note.id})">
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">${note.title}</span>
+            <button onclick="event.stopPropagation(); toggleFavorite(${note.id})" class="text-warning hover:text-warning/70">
+              <i class="fa fa-star"></i>
+            </button>
+          </div>
+          <p class="text-sm text-slate-500 line-clamp-2">${note.content}</p>
+        </div>
+      `).join('');
+    }
+
+    function toggleFavorite(id) {
+      const notes = Storage.get('notes') || [];
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        notes[idx].favorite = !notes[idx].favorite;
+        Storage.set('notes', notes);
+        renderFavorites();
+        showToast(notes[idx].favorite ? '已收藏' : '已取消收藏');
+      }
+    }
+
+    // ========== 回收站 ==========
+    function renderTrash() {
+      const trash = Storage.get('trash') || [];
+      const list = document.getElementById('trashList');
+
+      if (trash.length === 0) {
+        list.innerHTML = `
+          <div class="text-center py-10 text-slate-400">
+            <i class="fa fa-trash-o text-4xl mb-3"></i>
+            <p>回收站为空</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = trash.map(item => `
+        <div class="p-4 bg-slate-50 rounded-2xl">
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">${item.title}</span>
+            <span class="text-xs text-slate-400">${item.date}</span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button onclick="restoreNote(${item.id})" class="text-xs bg-green-100 text-green-600 px-3 py-1 rounded hover:bg-green-200 transition-colors">恢复</button>
+            <button onclick="deleteForever(${item.id})" class="text-xs bg-red-100 text-red-600 px-3 py-1 rounded hover:bg-red-200 transition-colors">彻底删除</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function restoreNote(id) {
+      const trash = Storage.get('trash') || [];
+      const item = trash.find(t => t.id === id);
+      if (item) {
+        const notes = Storage.get('notes') || [];
+        notes.push({ ...item, deleted: false, date: '刚刚恢复' });
+        Storage.set('notes', notes);
+        Storage.set('trash', trash.filter(t => t.id !== id));
+        renderTrash();
+        showToast('笔记已恢复');
+      }
+    }
+
+    function deleteForever(id) {
+      if (!confirm('确定永久删除？此操作不可撤销。')) return;
+      const trash = Storage.get('trash') || [];
+      Storage.set('trash', trash.filter(t => t.id !== id));
+      renderTrash();
+      showToast('已永久删除');
+    }
+
+    function clearTrash() {
+      if (!confirm('确定清空回收站？所有笔记将被永久删除。')) return;
+      Storage.set('trash', []);
+      renderTrash();
+      showToast('回收站已清空');
+    }
+
+    // ========== 设置页 ==========
+    function updateSettingsUI() {
+      const settings = Storage.get('settings') || {};
+      document.getElementById('darkModeToggle').classList.toggle('active', settings.darkMode);
+      document.getElementById('autoSaveToggle').classList.toggle('active', settings.autoSave);
+      document.getElementById('notifyToggle').classList.toggle('active', settings.notify);
+
+      const trash = Storage.get('trash') || [];
+      document.getElementById('trashCount').textContent = trash.length + ' 篇';
+    }
+
+    function toggleSetting(key) {
+      const settings = Storage.get('settings') || {};
+      settings[key] = !settings[key];
+      Storage.set('settings', settings);
+      updateSettingsUI();
+
+      if (key === 'darkMode') {
+        document.body.classList.toggle('bg-slate-900', settings.darkMode);
+        document.body.classList.toggle('text-white', settings.darkMode);
+      }
+
+      showToast(settings[key] ? '已开启' : '已关闭');
+    }
+
+    function editProfile() {
+      const name = prompt('修改昵称：', currentUser === 'guest' ? '游客用户' : currentUser);
+      if (name) {
+        document.getElementById('settingsUsername').textContent = name;
+        showToast('资料已更新');
+      }
+    }
+
+    // ========== 工具函数 ==========
+    function getCategoryColor(cat) {
+      const map = { work: 'blue', study: 'green', life: 'orange', ai: 'purple', travel: 'cyan' };
+      return map[cat] || 'slate';
+    }
+
+    function getCategoryName(cat) {
+      const map = { work: '工作', study: '学习', life: '生活', ai: 'AI生成', travel: '旅行' };
+      return map[cat] || cat;
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toastText');
+      text.textContent = message;
+      toast.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-4');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none', '-translate-y-4');
+        toast.classList.remove('opacity-100', 'translate-y-0');
+      }, 2500);
+    }
+
+    // ========== 初始化 ==========
+    document.addEventListener('DOMContentLoaded', () => {
+      initData();
+
+      // 检查是否有保存的登录状态
+      const savedUser = Storage.get('currentUser');
+      if (savedUser) {
+        currentUser = savedUser;
+        updateUserStatus();
+        showPage('home');
+      }
+
+      // 监听登录状态变化保存
+      window.addEventListener('beforeunload', () => {
+        if (currentUser) {
+          Storage.set('currentUser', currentUser);
+        } else {
+          Storage.remove('currentUser');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
